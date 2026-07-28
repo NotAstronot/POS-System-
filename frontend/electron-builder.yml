@@ -1,0 +1,26 @@
+appId: com.pos.system
+productName: POS System
+directories:
+  buildResources: build
+files:
+  - 'dist/**/*'
+  - 'electron/**/*'
+  - 'package.json'
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${name}-setup-${version}.${ext}
+mac:
+  target:
+    - dmg
+  artifactName: ${name}-${version}.${ext}
+linux:
+  target:
+    - AppImage
+  artifactName: ${name}-${version}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true

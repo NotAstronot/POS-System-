@@ -1,0 +1,76 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build output
+dist/
+build/
+*.exe
+*.dmg
+*.AppImage
+
+# Go
+*.out
+*.test
+*.prof
+backend/server
+backend/server.exe
+backend/cmd/server/server
+backend/cmd/server/server.exe
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.log
+
+# Database
+*.sqlite
+*.sqlite3
+
+# Docker
+postgres_data/
+redis_data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Electron build
+frontend/build/
+frontend/dist_electron/
+
+# Archives
+*.tar.gz
+*.zip
+
+# Windows artifacts
+backend;C/
+desktop.ini
+
+# Local config overrides
+backend/config.local.yaml
+*.local.yaml
+
+# SSL/TLS certs for local dev
+*.crt
+*.key
+*.pem
+
+# Python (if any scripts)
+__pycache__/
+*.pyc
+
+# Misc
+*.tmp
+*.bak
