@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, X, Search, Package, AlertTriangle } from 'lucide-react';
-import { productService, categoryService, type Product, type Category } from '../services/api';
+import { Plus, Pencil, Trash2, X, Search, Package, AlertTriangle, Upload, Image } from 'lucide-react';
+import { productService, categoryService, adminService, type Product, type Category } from '../services/api';
 import { useStore } from '../store/useStore';
 import toast from 'react-hot-toast';
 
@@ -15,12 +15,13 @@ interface ProductForm {
   tax_rate: number;
   sort_order: number;
   stock: number;
+  image_url: string;
 }
 
 const emptyForm: ProductForm = {
   code: '', name: '', description: '', base_price: 0,
   unit: 'pcs', category_id: '', has_variants: false,
-  tax_rate: 11, sort_order: 0, stock: 0,
+  tax_rate: 11, sort_order: 0, stock: 0, image_url: '',
 };
 
 export function MenuPage() {
@@ -31,6 +32,7 @@ export function MenuPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [searchQ, setSearchQ] = useState('');
+  const [customCategoryName, setCustomCategoryName] = useState('');
   const user = useStore((s) => s.user);
 
   const loadData = async () => {
@@ -61,16 +63,20 @@ export function MenuPage() {
   const openCreate = () => {
     setEditId(null);
     setForm(emptyForm);
+    setCustomCategoryName('');
     setShowForm(true);
   };
 
   const openEdit = (p: Product) => {
     setEditId(p.id);
+    const matchedCat = categories.find((c) => String(c.id) === String(p.category_id));
+    setCustomCategoryName(matchedCat ? '' : '');
     setForm({
       code: p.code, name: p.name, description: p.description || '',
       base_price: p.base_price, unit: p.unit,
       category_id: p.category_id, has_variants: p.has_variants,
-      tax_rate: p.tax_rate, sort_order: p.sort_order, stock: 0,
+      tax_rate: p.tax_rate, sort_order: p.sort_order, stock: p.stock || 0,
+      image_url: (p as any).image_url || '',
     });
     setShowForm(true);
   };
@@ -78,7 +84,15 @@ export function MenuPage() {
   const handleSave = async () => {
     if (!form.name) { toast.error('Nama produk wajib diisi'); return; }
     try {
-      const payload = { ...form };
+      let categoryId: string | null = form.category_id || null;
+      if (!categoryId && customCategoryName.trim()) {
+        const catRes = await categoryService.create(customCategoryName.trim());
+        categoryId = catRes.data.data.id;
+      }
+      const payload = {
+        ...form,
+        category_id: categoryId ? Number(categoryId) : null,
+      };
       if (editId) {
         await productService.update(editId, payload);
         toast.success('Produk diupdate!');
@@ -102,12 +116,24 @@ export function MenuPage() {
     } catch { toast.error('Gagal menghapus'); }
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const res = await adminService.upload(file);
+      setForm({ ...form, image_url: res.data.data.url });
+      toast.success('Gambar berhasil diupload!');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Gagal upload gambar');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Manajemen Menu</h1>
-          <p className="text-gray-400 text-sm mt-1">Kelola daftar produk</p>
+          <h1 className="text-2xl font-bold text-gray-900">Manajemen Menu</h1>
+          <p className="text-gray-500 text-sm mt-1">Kelola daftar produk</p>
         </div>
         <button onClick={openCreate} className="pos-btn-primary flex items-center gap-2">
           <Plus className="w-4 h-4" /> Tambah Produk
@@ -137,13 +163,18 @@ export function MenuPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((p) => (
             <div key={p.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                {(p as any).image_url ? (
+                  <img src={(p as any).image_url} alt={p.name} className="w-16 h-16 object-cover rounded-lg border border-gray-700 shrink-0" />
+                ) : (
+                  <div className="w-16 h-16 bg-gray-800 rounded-lg flex items-center justify-center shrink-0">
+                    <Image className="w-6 h-6 text-gray-600" />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-gray-500 font-mono">{p.code}</p>
                   <p className="text-white font-medium truncate">{p.name}</p>
-                  <p className="text-blue-400 font-bold mt-1">
-                    Rp {p.base_price.toLocaleString()}
-                  </p>
+                  <p className="text-blue-400 font-bold mt-1">Rp {p.base_price.toLocaleString()}</p>
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={() => openEdit(p)} className="p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-blue-400">
@@ -157,7 +188,9 @@ export function MenuPage() {
               <div className="flex items-center gap-3 mt-3 text-xs text-gray-500">
                 <span>{p.unit}</span>
                 {p.has_variants && <span className="pos-badge-warning">Varian</span>}
-                <span className="ml-auto">Pajak {p.tax_rate}%</span>
+                <span className={`ml-auto ${p.stock <= 0 ? 'text-red-400 font-bold' : p.stock <= 5 ? 'text-amber-400' : ''}`}>
+                  Stok: {p.stock}
+                </span>
               </div>
             </div>
           ))}
@@ -205,15 +238,30 @@ export function MenuPage() {
                 </div>
                 <div>
                   <label className="block text-sm text-gray-300 mb-1">Kategori</label>
-                  <select value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })} className="pos-input">
-                    <option value="">Pilih kategori</option>
+                  <input
+                    list="category-list"
+                    value={form.category_id ? (categories.find((c: any) => String(c.id) === form.category_id)?.name || '') : customCategoryName}
+                    onChange={(e) => {
+                      const matched = categories.find((c: any) => c.name === e.target.value);
+                      if (matched) {
+                        setForm({ ...form, category_id: String(matched.id) });
+                        setCustomCategoryName('');
+                      } else {
+                        setForm({ ...form, category_id: '' });
+                        setCustomCategoryName(e.target.value);
+                      }
+                    }}
+                    className="pos-input"
+                    placeholder="Ketik atau pilih kategori"
+                  />
+                  <datalist id="category-list">
                     {categories.map((c: any) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
+                      <option key={c.id} value={c.name} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm text-gray-300 mb-1">Pajak (%)</label>
                   <input type="number" value={form.tax_rate} onChange={(e) => setForm({ ...form, tax_rate: Number(e.target.value) })} className="pos-input" />
@@ -222,11 +270,41 @@ export function MenuPage() {
                   <label className="block text-sm text-gray-300 mb-1">Urutan</label>
                   <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} className="pos-input" />
                 </div>
+                <div>
+                  <label className="block text-sm text-gray-300 mb-1">Stok</label>
+                  <input type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })} className="pos-input" min={0} />
+                </div>
               </div>
               <label className="flex items-center gap-2 text-sm text-gray-300">
                 <input type="checkbox" checked={form.has_variants} onChange={(e) => setForm({ ...form, has_variants: e.target.checked })} className="rounded bg-gray-800 border-gray-600" />
                 Punya varian (ukuran/toping)
               </label>
+
+              {/* Image Upload */}
+              <div>
+                <label className="block text-sm text-gray-300 mb-1">Gambar Produk</label>
+                <div className="flex items-center gap-4">
+                  {form.image_url ? (
+                    <div className="relative">
+                      <img src={form.image_url} alt="Preview" className="w-20 h-20 object-cover rounded-lg border border-gray-700" />
+                      <button onClick={() => setForm({ ...form, image_url: '' })} className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                        <X className="w-3 h-3 text-white" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="w-20 h-20 border-2 border-dashed border-gray-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 transition-colors">
+                      <Upload className="w-5 h-5 text-gray-500" />
+                      <span className="text-xs text-gray-500 mt-1">Upload</span>
+                      <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                    </label>
+                  )}
+                  <div className="text-xs text-gray-500">
+                    <p>Format: JPG, PNG, WebP</p>
+                    <p>Maks: 5MB</p>
+                  </div>
+                </div>
+              </div>
+
               <button onClick={handleSave} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors">
                 {editId ? 'Simpan Perubahan' : 'Tambah Produk'}
               </button>

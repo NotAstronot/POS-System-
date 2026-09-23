@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: pos_system
       POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-pos_db_secure!2026}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
       # Hanya expose jika perlu akses dari luar Docker; hapus untuk production
       - "5432:5432"
@@ -146,7 +146,7 @@ services:
     ports:
       - "9093:9090"
     volumes:
-      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./infra/prometheus:/etc/prometheus
       - prometheus_data:/prometheus
 
 volumes:

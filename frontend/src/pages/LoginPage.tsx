@@ -48,7 +48,7 @@ export function LoginPage() {
 
       const { token, user } = res.data.data;
       setToken(token);
-      setUser(user);
+      setUser({ ...user, permissions: user.permissions || [] });
       useStore.getState().setOutletName('Outlet Pusat');
       toast.success('Login berhasil!');
       navigate('/pos');
@@ -60,19 +60,19 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-neutral-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-blue-600 mb-4">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-brand mb-4">
             <Store className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white">POS System</h1>
-          <p className="text-gray-400 mt-2">Masuk ke sistem kasir</p>
+          <h1 className="text-3xl font-bold text-neutral-900">POS System</h1>
+          <p className="text-neutral-500 mt-2">Masuk ke sistem kasir</p>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-2xl">
+        <div className="pos-card-elevated p-8">
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">Username</label>
             <input
               type="text"
               value={username}
@@ -83,7 +83,7 @@ export function LoginPage() {
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-2">PIN Kasir</label>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">PIN Kasir</label>
             <div className="flex justify-center gap-3">
               {pin.map((digit, i) => (
                 <input
@@ -94,14 +94,14 @@ export function LoginPage() {
                   value={digit}
                   onChange={(e) => handlePinChange(i, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(i, e)}
-                  className="w-12 h-14 text-center text-xl font-bold bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-12 h-14 text-center text-xl font-bold bg-neutral-100 border border-neutral-300 rounded-xl text-neutral-900 focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand"
                   inputMode="numeric"
                 />
               ))}
             </div>
             <button
               onClick={() => setShowPin(!showPin)}
-              className="mt-2 text-xs text-gray-500 hover:text-gray-300 flex items-center justify-center gap-1 w-full"
+              className="mt-2 text-xs text-neutral-500 hover:text-neutral-700 flex items-center justify-center gap-1 w-full"
             >
               {showPin ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
               {showPin ? 'Sembunyikan' : 'Tampilkan'}
@@ -111,13 +111,13 @@ export function LoginPage() {
           <button
             onClick={handleLogin}
             disabled={loading}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors disabled:opacity-50"
+            className="w-full py-3 bg-brand hover:bg-brand/90 text-white font-medium rounded-xl transition-colors disabled:opacity-50 focus:ring-2 focus:ring-brand/50 focus:ring-offset-2"
           >
             {loading ? 'Memproses...' : 'Masuk'}
           </button>
         </div>
 
-        <p className="text-center text-gray-600 text-xs mt-6">
+        <p className="text-center text-neutral-500 text-xs mt-6">
           POS System v1.0 &mdash; High Performance Point of Sale
         </p>
       </div>

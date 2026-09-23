@@ -1,11 +1,11 @@
 server:
-  port: "8080"
+  port: "8082"
   admin_username: admin
   admin_password: admin123
 
 database:
   dialect: postgres
-  host: postgres
+  host: localhost
   port: "5432"
   user: postgres
   password: postgres

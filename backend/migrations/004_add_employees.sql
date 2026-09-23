@@ -1,0 +1,48 @@
+CREATE TABLE IF NOT EXISTS departments (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS employees (
+    id BIGSERIAL PRIMARY KEY,
+    nik VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL DEFAULT '',
+    phone VARCHAR(50) NOT NULL DEFAULT '',
+    department_id BIGINT REFERENCES departments(id),
+    position VARCHAR(255) NOT NULL DEFAULT '',
+    hire_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    salary_base NUMERIC(15,2) NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS commissions (
+    id BIGSERIAL PRIMARY KEY,
+    employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    commission_type VARCHAR(50) NOT NULL DEFAULT 'percentage',
+    rate NUMERIC(5,2) NOT NULL DEFAULT 0,
+    description TEXT NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS salaries (
+    id BIGSERIAL PRIMARY KEY,
+    employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    pay_period VARCHAR(20) NOT NULL,
+    base_salary NUMERIC(15,2) NOT NULL DEFAULT 0,
+    commission_total NUMERIC(15,2) NOT NULL DEFAULT 0,
+    deduction NUMERIC(15,2) NOT NULL DEFAULT 0,
+    net_salary NUMERIC(15,2) NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    paid_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

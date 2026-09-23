@@ -3,37 +3,40 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "electron.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5177 && cross-env NODE_ENV=development electron electron.cjs\"",
     "electron:build": "vite build && electron-builder"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.13.0",
+    "axios": "^1.6.2",
+    "date-fns": "^3.3.1",
+    "lucide-react": "^0.302.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.21.0",
-    "axios": "^1.6.2",
-    "@tanstack/react-query": "^5.13.0",
-    "zustand": "^4.4.7",
     "react-hot-toast": "^2.4.1",
-    "lucide-react": "^0.302.0",
+    "react-router-dom": "^6.21.0",
     "recharts": "^2.10.4",
-    "date-fns": "^3.3.1"
+    "xlsx": "^0.18.5",
+    "zustand": "^4.4.7"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@vitejs/plugin-react": "^6.0.5",
     "autoprefixer": "^10.4.16",
     "concurrently": "^8.2.2",
-    "electron": "^28.1.0",
-    "electron-builder": "^24.9.1",
+    "cross-env": "^10.1.0",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.2.2",
-    "vite": "^5.0.8",
+    "vite": "^8.2.1",
     "wait-on": "^7.2.0"
   }
 }

@@ -14,9 +14,17 @@ export interface CartItem {
   subtotal: number;
 }
 
+export interface ActiveShift {
+  id: string;
+  shift_number?: number;
+  cash_start?: number;
+  status?: string;
+  opened_at?: string;
+}
+
 export interface OrderState {
   // Auth
-  user: { id: string; name: string; role: string; outletId: string; tenantId: string } | null;
+  user: { id: string; name: string; role: string; outletId: string; tenantId: string; permissions?: string[] } | null;
   outletName: string;
   token: string;
 
@@ -30,10 +38,11 @@ export interface OrderState {
   discountAmount: number;
 
   // Shift
-  activeShift: { id: string; shiftNumber: number; cashStart: number } | null;
+  activeShift: ActiveShift | null;
 
   // Actions
   setUser: (user: any) => void;
+  setToken: (token: string) => void;
   logout: () => void;
   addItem: (item: Omit<CartItem, 'id' | 'subtotal'>) => void;
   removeItem: (id: string) => void;
