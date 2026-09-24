@@ -132,27 +132,3 @@ Environment variables untuk backend:
 Proprietary - All Rights Reserved
 
 
-
-
-Next Steps
-1. Jalankan migration 015_multi_tenant.sql di PostgreSQL
-2. Buat super_admin user dengan role super_admin
-3. Test endpoint /api/v1/super-admin/tenants
-
-
-
-2. ~~Struktur Proyek Golang (Clean Architecture)~~ — selesai
-   Struktur folder terorganisir (app/delivery/usecase/repository/domain) memudahkan pemeliharaan kode saat aplikasi bertambah besar.
-
-
-Implementasi Kode Utama (Golang)
-JWT Payload & Custom Claims
-Ketika user kasir atau owner login, backend memberikan JWT token yang menyimpan informasi tenant_id, user_id, role, dan outlet_id.
-
-Middleware Tenant Extractor & RLS Injector
-Middleware ini bertugas membaca JWT, mengambil tenant_id, memvalidasinya, lalu menyuntikkannya ke context.Context Go dan session PostgreSQL.
-
-Repository (Safe Multi-Tenant Query) — selesai
-Setiap transaksi ke database wajib menggunakan tenant_id dari context. Semua repository memakai withTenantTx/withTenantTx1 (tenant_id dari context + RLS), dengan predicate tenant_id eksplisit di setiap SQL.
-
-
