@@ -23,7 +23,7 @@ func NewCategoryRepository(db *sql.DB) *CategoryRepository {
 
 func (r *CategoryRepository) List(ctx context.Context) ([]Category, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) ([]Category, error) {
-		rows, err := tx.QueryContext(ctx, "SELECT id, name, created_at, updated_at FROM categories ORDER BY id")
+		rows, err := tx.QueryContext(ctx, "SELECT id, name, created_at, updated_at FROM categories WHERE tenant_id=$1 ORDER BY id", tenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -43,7 +43,7 @@ func (r *CategoryRepository) List(ctx context.Context) ([]Category, error) {
 func (r *CategoryRepository) GetByID(ctx context.Context, id int64) (*Category, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) (*Category, error) {
 		c := &Category{}
-		err := tx.QueryRowContext(ctx, "SELECT id, name, created_at, updated_at FROM categories WHERE id=$1", id).Scan(&c.ID, &c.Name, &c.CreatedAt, &c.UpdatedAt)
+		err := tx.QueryRowContext(ctx, "SELECT id, name, created_at, updated_at FROM categories WHERE id=$1 AND tenant_id=$2", id, tenantID).Scan(&c.ID, &c.Name, &c.CreatedAt, &c.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -65,7 +65,7 @@ func (r *CategoryRepository) Create(ctx context.Context, name string) (*Category
 func (r *CategoryRepository) Update(ctx context.Context, id int64, name string) (*Category, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) (*Category, error) {
 		c := &Category{}
-		err := tx.QueryRowContext(ctx, "UPDATE categories SET name=$1, updated_at=NOW() WHERE id=$2 RETURNING id, name, created_at, updated_at", name, id).Scan(&c.ID, &c.Name, &c.CreatedAt, &c.UpdatedAt)
+		err := tx.QueryRowContext(ctx, "UPDATE categories SET name=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3 RETURNING id, name, created_at, updated_at", name, id, tenantID).Scan(&c.ID, &c.Name, &c.CreatedAt, &c.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -75,7 +75,7 @@ func (r *CategoryRepository) Update(ctx context.Context, id int64, name string) 
 
 func (r *CategoryRepository) Delete(ctx context.Context, id int64) error {
 	return withTenantTx(ctx, r.db, func(tx *sql.Tx, tenantID int64) error {
-		_, err := tx.ExecContext(ctx, "DELETE FROM categories WHERE id=$1", id)
+		_, err := tx.ExecContext(ctx, "DELETE FROM categories WHERE id=$1 AND tenant_id=$2", id, tenantID)
 		return err
 	})
 }

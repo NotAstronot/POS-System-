@@ -2,6 +2,7 @@ package rest
 
 import (
 	"net/http"
+	"pos-system/internal/repository/postgres"
 	"pos-system/internal/usecase"
 	"strconv"
 
@@ -9,11 +10,48 @@ import (
 )
 
 type TransactionHandler struct {
-	usecase *usecase.TransactionUsecase
+	usecase      *usecase.TransactionUsecase
+	orderUsecase *usecase.OrderUsecase
 }
 
-func NewTransactionHandler(usecase *usecase.TransactionUsecase) *TransactionHandler {
-	return &TransactionHandler{usecase: usecase}
+func NewTransactionHandler(usecase *usecase.TransactionUsecase, orderUsecase *usecase.OrderUsecase) *TransactionHandler {
+	return &TransactionHandler{usecase: usecase, orderUsecase: orderUsecase}
+}
+
+// Sync accepts a batch of offline cashier transactions (orders + payments) and
+// persists them to PostgreSQL. Idempotent per client_order_id, so re-sending
+// the queue after a network failure never duplicates data.
+func (h *TransactionHandler) Sync(c *gin.Context) {
+	var req struct {
+		Transactions []createOrderReq `json:"transactions"`
+		Orders       []createOrderReq `json:"orders"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	list := req.Transactions
+	if len(list) == 0 {
+		list = req.Orders
+	}
+	if len(list) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tidak ada transaksi untuk disinkronkan"})
+		return
+	}
+
+	userID, err := jwtUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	batch := make([]postgres.CreateOrderInput, 0, len(list))
+	for _, o := range list {
+		batch = append(batch, o.toInput(userID))
+	}
+
+	res := h.orderUsecase.SyncOrders(c.Request.Context(), batch)
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": res})
 }
 
 func (h *TransactionHandler) List(c *gin.Context) {

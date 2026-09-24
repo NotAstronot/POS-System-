@@ -92,6 +92,26 @@ func (r *TenantRepository) Create(ctx context.Context, t *Tenant) (*Tenant, erro
 	})
 }
 
+// CreateWithOwner registers a new tenant together with its owner user in one
+// transaction (tenants + users are both system-scoped, no RLS), so a failed
+// owner insert never leaves an orphan tenant behind.
+func (r *TenantRepository) CreateWithOwner(ctx context.Context, t *Tenant, owner *User) error {
+	return withSystemTx(ctx, r.db, func(tx *sql.Tx) error {
+		if err := tx.QueryRowContext(ctx,
+			`INSERT INTO tenants (name, slug, domain, logo_url, subscription_plan, subscription_expires_at, max_users, max_products, max_branches, settings, status)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, created_at, updated_at`,
+			t.Name, t.Slug, t.Domain, t.LogoURL, t.SubscriptionPlan, t.SubscriptionExpiresAt,
+			t.MaxUsers, t.MaxProducts, t.MaxBranches, t.Settings, t.Status,
+		).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return err
+		}
+		return tx.QueryRowContext(ctx,
+			"INSERT INTO users (username, name, password, role, outlet_id, tenant_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id",
+			owner.Username, owner.Name, owner.Password, owner.Role, owner.OutletID, t.ID,
+		).Scan(&owner.ID)
+	})
+}
+
 func (r *TenantRepository) Update(ctx context.Context, t *Tenant) error {
 	return withSystemTx(ctx, r.db, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx,

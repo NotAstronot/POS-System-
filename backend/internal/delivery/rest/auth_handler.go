@@ -1,9 +1,7 @@
 package rest
 
 import (
-	"context"
 	"net/http"
-	"pos-system/internal/domain"
 	"pos-system/internal/usecase"
 	"strconv"
 	"sync"
@@ -37,6 +35,64 @@ type loginRequest struct {
 	Password string `json:"password" binding:"required"`
 	TenantID string `json:"tenant_id"`
 	OutletID string `json:"outlet_id"`
+}
+
+type registerMerchantRequest struct {
+	MerchantName string `json:"merchant_name" binding:"required"`
+	Slug         string `json:"slug"`
+	Username     string `json:"username" binding:"required"`
+	OwnerName    string `json:"owner_name"`
+	Password     string `json:"password" binding:"required"`
+}
+
+// RegisterMerchant creates a new tenant + owner user and returns a JWT so the
+// owner can start using the app immediately.
+func (h *AuthHandler) RegisterMerchant(c *gin.Context) {
+	var req registerMerchantRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tenant, owner, err := h.usecase.RegisterMerchant(c.Request.Context(), usecase.RegisterMerchantInput{
+		MerchantName: req.MerchantName,
+		Slug:         req.Slug,
+		Username:     req.Username,
+		OwnerName:    req.OwnerName,
+		Password:     req.Password,
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	claims := NewCustomClaims(owner.ID, tenant.ID, owner.Role, owner.OutletID, owner.Name, time.Now())
+	tokenStr, err := SignToken(claims, h.secretKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"data": gin.H{
+			"token": tokenStr,
+			"claims": gin.H{
+				"user_id":   claims.UserID,
+				"tenant_id": claims.TenantID,
+				"role":      claims.Role,
+				"outlet_id": claims.OutletID,
+			},
+			"tenant": tenant,
+			"user": gin.H{
+				"id":       owner.ID,
+				"username": owner.Username,
+				"name":     owner.Name,
+				"role":     owner.Role,
+				"outletId": owner.OutletID,
+				"tenantId": tenant.ID,
+			},
+		},
+	})
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {

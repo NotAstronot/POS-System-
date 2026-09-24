@@ -55,10 +55,6 @@ func NewEfakturRepository(db *sql.DB) *EFakturRepository {
 	return &EFakturRepository{db: db}
 }
 
-func (r *EFakturRepository) Query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return r.db.QueryContext(ctx, query, args...)
-}
-
 func (r *EFakturRepository) ListAll(ctx context.Context) ([]Efaktur, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) ([]Efaktur, error) {
 		rows, err := tx.QueryContext(ctx, `
@@ -193,5 +189,75 @@ func (r *EFakturRepository) Delete(ctx context.Context, id int64) error {
 			return err
 		}
 		return nil
+	})
+}
+
+// ExportSourceRow is a tenant-scoped source row for building e-Faktur export lines.
+type ExportSourceRow struct {
+	ReferenceNumber string
+	PartyName       string
+	NPWP            string
+	LineDate        string
+	Amount          float64
+	IsSalary        bool
+	PayPeriod       string
+}
+
+// FetchExportSource loads tax source data for an export type within the
+// ctx tenant transaction (tenant_id from context + RLS + explicit filters).
+func (r *EFakturRepository) FetchExportSource(ctx context.Context, exportType, period string) ([]ExportSourceRow, error) {
+	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) ([]ExportSourceRow, error) {
+		var (
+			rows *sql.Rows
+			err  error
+		)
+		switch exportType {
+		case "ppn_keluaran":
+			rows, err = tx.QueryContext(ctx, `
+				SELECT i.invoice_number, COALESCE(c.name, ''), COALESCE(c.npwp, ''), i.invoice_date::text, i.total_amount
+				FROM sales_invoices i
+				JOIN customers c ON c.id = i.customer_id AND c.tenant_id = i.tenant_id
+				WHERE i.tenant_id=$1 AND to_char(i.invoice_date, 'YYYY-MM') = $2
+				ORDER BY i.invoice_date`, tenantID, period)
+		case "ppn_masukan", "pph23":
+			rows, err = tx.QueryContext(ctx, `
+				SELECT i.invoice_number, COALESCE(s.name, ''), COALESCE(s.npwp, ''), i.invoice_date::text, i.total_amount
+				FROM purchase_invoices i
+				JOIN suppliers s ON s.id = i.supplier_id AND s.tenant_id = i.tenant_id
+				WHERE i.tenant_id=$1 AND to_char(i.invoice_date, 'YYYY-MM') = $2
+				ORDER BY i.invoice_date`, tenantID, period)
+		case "pph21":
+			rows, err = tx.QueryContext(ctx, `
+				SELECT e.name, s.pay_period, s.base_salary + COALESCE(s.commission_total,0) - COALESCE(s.deduction,0)
+				FROM salaries s
+				JOIN employees e ON e.id = s.employee_id AND e.tenant_id = s.tenant_id
+				WHERE s.tenant_id=$1 AND s.pay_period = $2
+				ORDER BY e.name`, tenantID, period)
+		default:
+			return nil, fmt.Errorf("jenis ekspor tidak dikenal: %s", exportType)
+		}
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		list := make([]ExportSourceRow, 0)
+		for rows.Next() {
+			var row ExportSourceRow
+			if exportType == "pph21" {
+				var net float64
+				if err := rows.Scan(&row.PartyName, &row.PayPeriod, &net); err != nil {
+					return nil, err
+				}
+				row.Amount = net
+				row.IsSalary = true
+			} else {
+				if err := rows.Scan(&row.ReferenceNumber, &row.PartyName, &row.NPWP, &row.LineDate, &row.Amount); err != nil {
+					return nil, err
+				}
+			}
+			list = append(list, row)
+		}
+		return list, rows.Err()
 	})
 }

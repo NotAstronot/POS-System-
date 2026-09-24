@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"pos-system/internal/repository/postgres"
@@ -33,6 +34,14 @@ func (u *OrderUsecase) CreateOrder(ctx context.Context, in postgres.CreateOrderI
 	for _, p := range in.Payments {
 		if p.Amount <= 0 {
 			return nil, errors.New("jumlah pembayaran harus lebih dari 0")
+		}
+	}
+	if in.OrderType == "" {
+		in.OrderType = "dine_in"
+	}
+	if in.DiscountAmount <= 0 && in.DiscountCode != "" {
+		if pct, ok := validDiscounts[strings.ToUpper(strings.TrimSpace(in.DiscountCode))]; ok {
+			in.DiscountPercent = pct
 		}
 	}
 	return u.orderRepo.CreateOrder(ctx, in)

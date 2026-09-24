@@ -47,15 +47,16 @@ func jwtUserIDPtr(c *gin.Context) *int64 {
 }
 
 type createOrderReq struct {
-	ClientOrderID string `json:"client_order_id"`
-	OutletID      string `json:"outlet_id"`
-	ShiftID       *int64 `json:"shift_id"`
-	OrderType     string `json:"order_type"`
-	TableNumber   string `json:"table_number"`
-	CustomerName  string `json:"customer_name"`
-	CustomerPhone string `json:"customer_phone"`
-	DiscountCode  string `json:"discount_code"`
-	Items         []struct {
+	ClientOrderID  string  `json:"client_order_id"`
+	OutletID       string  `json:"outlet_id"`
+	ShiftID        *int64  `json:"shift_id"`
+	OrderType      string  `json:"order_type"`
+	TableNumber    string  `json:"table_number"`
+	CustomerName   string  `json:"customer_name"`
+	CustomerPhone  string  `json:"customer_phone"`
+	DiscountCode   string  `json:"discount_code"`
+	DiscountAmount float64 `json:"discount_amount"`
+	Items          []struct {
 		ProductID    int64  `json:"product_id"`
 		Quantity     int    `json:"quantity"`
 		VariantLabel string `json:"variant_label"`
@@ -70,15 +71,16 @@ type createOrderReq struct {
 
 func (req *createOrderReq) toInput(userID int64) postgres.CreateOrderInput {
 	in := postgres.CreateOrderInput{
-		ClientOrderID: req.ClientOrderID,
-		OutletID:      req.OutletID,
-		UserID:        userID,
-		ShiftID:       req.ShiftID,
-		OrderType:     req.OrderType,
-		TableNumber:   req.TableNumber,
-		CustomerName:  req.CustomerName,
-		CustomerPhone: req.CustomerPhone,
-		DiscountCode:  req.DiscountCode,
+		ClientOrderID:  req.ClientOrderID,
+		OutletID:       req.OutletID,
+		UserID:         userID,
+		ShiftID:        req.ShiftID,
+		OrderType:      req.OrderType,
+		TableNumber:    req.TableNumber,
+		CustomerName:   req.CustomerName,
+		CustomerPhone:  req.CustomerPhone,
+		DiscountCode:   req.DiscountCode,
+		DiscountAmount: req.DiscountAmount,
 	}
 	for _, it := range req.Items {
 		in.Items = append(in.Items, postgres.OrderItemInput{

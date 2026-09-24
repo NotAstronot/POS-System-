@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/lib/pq"
 
 	"pos-system/internal/config"
 	"pos-system/internal/delivery/rest"
@@ -142,7 +143,7 @@ func wire(db *sql.DB, cfg *config.Config) rest.Handlers {
 	// Use cases (application business rules layer)
 	categoryUsecase := usecase.NewCategoryUsecase(categoryRepo)
 	productUsecase := usecase.NewProductUsecase(productRepo)
-	authUsecase := usecase.NewAuthUsecase(userRepo)
+	authUsecase := usecase.NewAuthUsecase(userRepo, tenantRepo)
 	userUsecase := usecase.NewUserUsecase(userRepo)
 	shiftUsecase := usecase.NewShiftUsecase(shiftRepo, orderRepo, orderItemRepo, productRepo)
 	transactionUsecase := usecase.NewTransactionUsecase(transactionRepo, orderRepo)
@@ -198,7 +199,7 @@ func wire(db *sql.DB, cfg *config.Config) rest.Handlers {
 		Upload:             rest.NewUploadHandler(),
 		Shift:              rest.NewShiftHandler(shiftUsecase),
 		QRIS:               rest.NewQRISHandler(),
-		Transaction:        rest.NewTransactionHandler(transactionUsecase),
+		Transaction:        rest.NewTransactionHandler(transactionUsecase, orderUsecase),
 		Branch:             rest.NewBranchHandler(branchUsecase),
 		Department:         rest.NewDepartmentHandler(departmentUsecase),
 		Employee:           rest.NewEmployeeHandler(employeeUsecase),

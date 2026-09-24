@@ -34,21 +34,23 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-const userCols = "id, username, name, password, role, outlet_id, tenant_id, created_at, updated_at"
+const userCols = "id, username, name, password, role, outlet_id, tenant_id, is_active, created_at, updated_at"
 
 func scanUser(u *User, row scanRow) error {
-	return row.Scan(&u.ID, &u.Username, &u.Name, &u.Password, &u.Role, &u.OutletID, &u.TenantID, &u.CreatedAt, &u.UpdatedAt)
+	return row.Scan(&u.ID, &u.Username, &u.Name, &u.Password, &u.Role, &u.OutletID, &u.TenantID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt)
 }
 
 type scanRow interface {
 	Scan(dest ...any) error
 }
 
-// FindByUsername finds a user by username within the current tenant context (RLS applied).
+// FindByUsername finds a user by username within the current tenant context.
+// users has no RLS, so tenant_id is filtered explicitly from ctx.
 func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*User, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) (*User, error) {
 		u := &User{}
-		err := scanUser(u, tx.QueryRowContext(ctx, "SELECT "+userCols+" FROM users WHERE username=$1", username))
+		err := scanUser(u, tx.QueryRowContext(ctx,
+			"SELECT "+userCols+" FROM users WHERE username=$1 AND tenant_id=$2::text", username, tenantID))
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +74,8 @@ func (r *UserRepository) FindByUsernameGlobal(ctx context.Context, username stri
 func (r *UserRepository) GetByID(ctx context.Context, id int64) (*User, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) (*User, error) {
 		u := &User{}
-		err := scanUser(u, tx.QueryRowContext(ctx, "SELECT "+userCols+" FROM users WHERE id=$1", id))
+		err := scanUser(u, tx.QueryRowContext(ctx,
+			"SELECT "+userCols+" FROM users WHERE id=$1 AND tenant_id=$2::text", id, tenantID))
 		if err != nil {
 			return nil, err
 		}
@@ -82,7 +85,8 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*User, error) {
 
 func (r *UserRepository) ListAll(ctx context.Context) ([]User, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) ([]User, error) {
-		rows, err := tx.QueryContext(ctx, "SELECT "+userCols+" FROM users ORDER BY id ASC")
+		rows, err := tx.QueryContext(ctx,
+			"SELECT "+userCols+" FROM users WHERE tenant_id=$1::text ORDER BY id ASC", tenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -90,7 +94,7 @@ func (r *UserRepository) ListAll(ctx context.Context) ([]User, error) {
 		var users []User
 		for rows.Next() {
 			var u User
-			if err := rows.Scan(&u.ID, &u.Username, &u.Name, &u.Password, &u.Role, &u.OutletID, &u.TenantID, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			if err := rows.Scan(&u.ID, &u.Username, &u.Name, &u.Password, &u.Role, &u.OutletID, &u.TenantID, &u.IsActive, &u.CreatedAt, &u.UpdatedAt); err != nil {
 				return nil, err
 			}
 			users = append(users, u)
@@ -113,8 +117,8 @@ func (r *UserRepository) Create(ctx context.Context, u *User) (int64, error) {
 func (r *UserRepository) Update(ctx context.Context, u *User) error {
 	return withTenantTx(ctx, r.db, func(tx *sql.Tx, tenantID int64) error {
 		_, err := tx.ExecContext(ctx,
-			"UPDATE users SET name=$1, role=$2, outlet_id=$3, tenant_id=$4, updated_at=NOW() WHERE id=$5",
-			u.Name, u.Role, u.OutletID, tenantID, u.ID,
+			"UPDATE users SET name=$1, role=$2, outlet_id=$3, tenant_id=$4::text, is_active=$5, updated_at=NOW() WHERE id=$6 AND tenant_id=$7::text",
+			u.Name, u.Role, u.OutletID, tenantID, u.IsActive, u.ID, tenantID,
 		)
 		return err
 	})
@@ -122,24 +126,33 @@ func (r *UserRepository) Update(ctx context.Context, u *User) error {
 
 func (r *UserRepository) UpdatePassword(ctx context.Context, id int64, password string) error {
 	return withTenantTx(ctx, r.db, func(tx *sql.Tx, tenantID int64) error {
-		_, err := tx.ExecContext(ctx, "UPDATE users SET password=$1, updated_at=NOW() WHERE id=$2", password, id)
+		_, err := tx.ExecContext(ctx,
+			"UPDATE users SET password=$1, updated_at=NOW() WHERE id=$2 AND tenant_id=$3::text",
+			password, id, tenantID)
 		return err
 	})
 }
 
 func (r *UserRepository) Delete(ctx context.Context, id int64) error {
 	return withTenantTx(ctx, r.db, func(tx *sql.Tx, tenantID int64) error {
-		_, err := tx.ExecContext(ctx, "DELETE FROM users WHERE id=$1", id)
+		_, err := tx.ExecContext(ctx,
+			"DELETE FROM users WHERE id=$1 AND tenant_id=$2::text", id, tenantID)
 		return err
 	})
 }
 
 // GetPermissions returns permissions for a user within the current tenant.
+// user_permissions/permissions have no tenant_id, so membership is scoped via users.
 func (r *UserRepository) GetPermissions(ctx context.Context, userID int64) ([]Permission, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) ([]Permission, error) {
 		rows, err := tx.QueryContext(ctx,
-			`SELECT p.id, p.name, p.description FROM permissions p INNER JOIN user_permissions up ON p.id=up.permission_id WHERE up.user_id=$1 ORDER BY p.id`,
-			userID,
+			`SELECT p.id, p.name, p.description
+			 FROM permissions p
+			 INNER JOIN user_permissions up ON p.id=up.permission_id
+			 INNER JOIN users u ON u.id=up.user_id
+			 WHERE up.user_id=$1 AND u.tenant_id=$2::text
+			 ORDER BY p.id`,
+			userID, tenantID,
 		)
 		if err != nil {
 			return nil, err
@@ -185,11 +198,24 @@ func (r *UserRepository) GetPermissionsForTenant(ctx context.Context, tenantID i
 
 func (r *UserRepository) SetPermissions(ctx context.Context, userID int64, permissionIDs []int64) error {
 	return withTenantTx(ctx, r.db, func(tx *sql.Tx, tenantID int64) error {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM user_permissions WHERE user_id=$1", userID); err != nil {
+		var ownerTenant string
+		err := tx.QueryRowContext(ctx,
+			"SELECT tenant_id FROM users WHERE id=$1 AND tenant_id=$2::text",
+			userID, tenantID).Scan(&ownerTenant)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return errors.New("user not found in this tenant")
+			}
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			"DELETE FROM user_permissions WHERE user_id=$1", userID); err != nil {
 			return err
 		}
 		for _, pid := range permissionIDs {
-			if _, err := tx.ExecContext(ctx, "INSERT INTO user_permissions (user_id, permission_id) VALUES ($1,$2)", userID, pid); err != nil {
+			if _, err := tx.ExecContext(ctx,
+				"INSERT INTO user_permissions (user_id, permission_id) VALUES ($1,$2)",
+				userID, pid); err != nil {
 				return err
 			}
 		}

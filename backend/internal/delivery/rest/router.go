@@ -92,7 +92,7 @@ func RegisterRoutes(r *gin.Engine, h Handlers, cfg RouteConfig) {
 		registerPOSRoutes(api, h, authMw, posAccessMw, menuManageMw, cfg.DB)
 		registerPaymentRoutes(api, h, authMw)
 		registerShiftRoutes(api, h, authMw)
-		registerTransactionRoutes(api, h, authMw)
+		registerTransactionRoutes(api, h, authMw, posAccessMw)
 		registerAdminRoutes(api, h, authMw, adminMw)
 		registerSmartlinkRoutes(api, h, authMw, adminMw, smartlinkMw)
 		registerManufacturingRoutes(api, h, authMw, adminMw, manufacturingMw)
@@ -104,6 +104,7 @@ func registerAuthRoutes(api *gin.RouterGroup, h Handlers) {
 	auth := api.Group("/auth")
 	{
 		auth.POST("/login", h.Auth.Login)
+		auth.POST("/register-merchant", h.Auth.RegisterMerchant)
 	}
 }
 
@@ -162,12 +163,13 @@ func registerShiftRoutes(api *gin.RouterGroup, h Handlers, authMw gin.HandlerFun
 	}
 }
 
-func registerTransactionRoutes(api *gin.RouterGroup, h Handlers, authMw gin.HandlerFunc) {
+func registerTransactionRoutes(api *gin.RouterGroup, h Handlers, authMw, posAccessMw gin.HandlerFunc) {
 	transaction := api.Group("/transactions")
 	transaction.Use(authMw)
 	{
 		transaction.GET("", h.Transaction.List)
 		transaction.POST("", h.Transaction.Create)
 		transaction.GET("/:id", h.Transaction.GetByID)
+		transaction.POST("/sync", posAccessMw, h.Transaction.Sync)
 	}
 }

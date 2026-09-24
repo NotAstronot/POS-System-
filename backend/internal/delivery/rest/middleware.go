@@ -3,6 +3,7 @@ package rest
 import (
 	"database/sql"
 	"net/http"
+	"pos-system/internal/database"
 	"pos-system/internal/domain"
 
 	"github.com/gin-gonic/gin"
@@ -87,12 +88,17 @@ func RequirePermission(db *sql.DB, permissionName string) gin.HandlerFunc {
 		}
 
 		var count int
-		err := db.QueryRow(
-			`SELECT COUNT(*) FROM user_permissions up
-			 INNER JOIN permissions p ON p.id = up.permission_id
-			 WHERE up.user_id = $1 AND p.name = $2`,
-			userID, permissionName,
-		).Scan(&count)
+		count, err := database.WithTenantTx1(c.Request.Context(), db, func(tx *sql.Tx, tenantID int64) (int, error) {
+			var n int
+			qerr := tx.QueryRowContext(c.Request.Context(),
+				`SELECT COUNT(*) FROM user_permissions up
+				 INNER JOIN permissions p ON p.id = up.permission_id
+				 INNER JOIN users u ON u.id = up.user_id
+				 WHERE up.user_id = $1 AND p.name = $2 AND u.tenant_id = $3::text`,
+				userID, permissionName, tenantID,
+			).Scan(&n)
+			return n, qerr
+		})
 		if err != nil || count == 0 {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "akses ditolak: tidak ada hak akses"})
 			return

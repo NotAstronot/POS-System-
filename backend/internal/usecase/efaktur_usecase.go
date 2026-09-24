@@ -83,99 +83,40 @@ func (u *EFakturUsecase) Generate(ctx context.Context, exportType, period string
 }
 
 func (u *EFakturUsecase) buildLines(ctx context.Context, exportType, period string) ([]postgres.EFakturLine, error) {
-	lines := make([]postgres.EFakturLine, 0)
+	src, err := u.repo.FetchExportSource(ctx, exportType, period)
+	if err != nil {
+		return nil, err
+	}
+	lines := make([]postgres.EFakturLine, 0, len(src))
 
 	switch exportType {
-	case ExportTypePPNKeluaran:
-		rows, err := u.repo.Query(ctx, `
-			SELECT i.invoice_number, COALESCE(c.name, ''), COALESCE(c.npwp, ''), i.invoice_date::text, i.total_amount
-			FROM sales_invoices i
-			JOIN customers c ON c.id = i.customer_id
-			WHERE to_char(i.invoice_date, 'YYYY-MM') = $1 ORDER BY i.invoice_date`, period)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var ref, name, npwp, date string
-			var total float64
-			if err := rows.Scan(&ref, &name, &npwp, &date, &total); err != nil {
-				return nil, err
-			}
-			dpp := total / 1.11
+	case ExportTypePPNKeluaran, ExportTypePPNMasukan:
+		for _, row := range src {
+			dpp := row.Amount / 1.11
+			date := row.LineDate
 			lines = append(lines, postgres.EFakturLine{
-				ReferenceNumber: ref, PartyName: name, NPWP: npwp,
-				LineDate: &date, TaxableBase: dpp, TaxAmount: total - dpp, Status: "valid",
-			})
-		}
-
-	case ExportTypePPNMasukan:
-		rows, err := u.repo.Query(ctx, `
-			SELECT i.invoice_number, COALESCE(s.name, ''), COALESCE(s.npwp, ''), i.invoice_date::text, i.total_amount
-			FROM purchase_invoices i
-			JOIN suppliers s ON s.id = i.supplier_id
-			WHERE to_char(i.invoice_date, 'YYYY-MM') = $1 ORDER BY i.invoice_date`, period)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var ref, name, npwp, date string
-			var total float64
-			if err := rows.Scan(&ref, &name, &npwp, &date, &total); err != nil {
-				return nil, err
-			}
-			dpp := total / 1.11
-			lines = append(lines, postgres.EFakturLine{
-				ReferenceNumber: ref, PartyName: name, NPWP: npwp,
-				LineDate: &date, TaxableBase: dpp, TaxAmount: total - dpp, Status: "valid",
+				ReferenceNumber: row.ReferenceNumber, PartyName: row.PartyName, NPWP: row.NPWP,
+				LineDate: &date, TaxableBase: dpp, TaxAmount: row.Amount - dpp, Status: "valid",
 			})
 		}
 
 	case ExportTypePPh23:
-		rows, err := u.repo.Query(ctx, `
-			SELECT i.invoice_number, COALESCE(s.name, ''), COALESCE(s.npwp, ''), i.invoice_date::text, i.total_amount
-			FROM purchase_invoices i
-			JOIN suppliers s ON s.id = i.supplier_id
-			WHERE to_char(i.invoice_date, 'YYYY-MM') = $1 ORDER BY i.invoice_date`, period)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var ref, name, npwp, date string
-			var total float64
-			if err := rows.Scan(&ref, &name, &npwp, &date, &total); err != nil {
-				return nil, err
-			}
+		for _, row := range src {
+			date := row.LineDate
 			lines = append(lines, postgres.EFakturLine{
-				ReferenceNumber: ref, PartyName: name, NPWP: npwp,
-				LineDate: &date, TaxableBase: total, TaxAmount: total * 0.02, Status: "valid",
+				ReferenceNumber: row.ReferenceNumber, PartyName: row.PartyName, NPWP: row.NPWP,
+				LineDate: &date, TaxableBase: row.Amount, TaxAmount: row.Amount * 0.02, Status: "valid",
 			})
 		}
 
 	case ExportTypePPh21:
-		rows, err := u.repo.Query(ctx, `
-			SELECT e.name, s.pay_period, s.base_salary + COALESCE(s.commission_total,0) - COALESCE(s.deduction,0)
-			FROM salaries s
-			JOIN employees e ON e.id = s.employee_id
-			WHERE s.pay_period = $1 ORDER BY e.name`, period)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var name, payPeriod string
-			var net float64
-			if err := rows.Scan(&name, &payPeriod, &net); err != nil {
-				return nil, err
-			}
+		for _, row := range src {
 			lines = append(lines, postgres.EFakturLine{
-				ReferenceNumber: "PPh21-" + payPeriod,
-				PartyName:       name,
+				ReferenceNumber: "PPh21-" + row.PayPeriod,
+				PartyName:       row.PartyName,
 				LineDate:        ptrString(period + "-01"),
-				TaxableBase:     net,
-				TaxAmount:       net * 0.05,
+				TaxableBase:     row.Amount,
+				TaxAmount:       row.Amount * 0.05,
 				Status:          "valid",
 			})
 		}

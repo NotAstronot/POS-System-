@@ -152,5 +152,7 @@ Ketika user kasir atau owner login, backend memberikan JWT token yang menyimpan 
 Middleware Tenant Extractor & RLS Injector
 Middleware ini bertugas membaca JWT, mengambil tenant_id, memvalidasinya, lalu menyuntikkannya ke context.Context Go dan session PostgreSQL.
 
-Repository (Safe Multi-Tenant Query)
-Setiap transaksi ke database wajib menggunakan tenant_id dari context
+Repository (Safe Multi-Tenant Query) — selesai
+Setiap transaksi ke database wajib menggunakan tenant_id dari context. Semua repository memakai withTenantTx/withTenantTx1 (tenant_id dari context + RLS), dengan predicate tenant_id eksplisit di setiap SQL.
+
+

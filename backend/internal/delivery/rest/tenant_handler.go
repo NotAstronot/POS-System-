@@ -18,7 +18,7 @@ func NewTenantHandler(usecase *usecase.TenantUsecase) *TenantHandler {
 }
 
 func (h *TenantHandler) List(c *gin.Context) {
-	list, err := h.usecase.List()
+	list, err := h.usecase.List(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -32,7 +32,7 @@ func (h *TenantHandler) GetByID(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	tenant, err := h.usecase.GetByID(id)
+	tenant, err := h.usecase.GetByID(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "tenant tidak ditemukan"})
 		return
@@ -71,7 +71,7 @@ func (h *TenantHandler) Create(c *gin.Context) {
 		Status:           req.Status,
 	}
 
-	result, err := h.usecase.Create(tenant)
+	result, err := h.usecase.Create(c.Request.Context(), tenant)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -117,7 +117,7 @@ func (h *TenantHandler) Update(c *gin.Context) {
 		Status:           req.Status,
 	}
 
-	result, err := h.usecase.Update(tenant)
+	result, err := h.usecase.Update(c.Request.Context(), tenant)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -131,7 +131,7 @@ func (h *TenantHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	if err := h.usecase.Delete(id); err != nil {
+	if err := h.usecase.Delete(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -144,7 +144,7 @@ func (h *TenantHandler) GetUsage(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
-	usage, err := h.usecase.GetUsage(id)
+	usage, err := h.usecase.GetUsage(c.Request.Context(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

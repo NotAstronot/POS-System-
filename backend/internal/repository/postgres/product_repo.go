@@ -52,9 +52,9 @@ func scanProduct(p *Product, row scanRow) error {
 func (r *ProductRepository) List(ctx context.Context) ([]Product, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) ([]Product, error) {
 		rows, err := tx.QueryContext(ctx, `SELECT p.id, p.code, p.name, p.description, p.base_price, p.unit, p.image_url, p.category_id, p.has_variants, p.tax_rate, p.sort_order,
-			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id), 0)::int AS stock,
+			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id AND s.tenant_id = p.tenant_id), 0)::int AS stock,
 			p.barcode, p.purchase_price, p.min_stock, p.is_service, p.created_at, p.updated_at
-			FROM products p ORDER BY p.sort_order, p.name`)
+			FROM products p WHERE p.tenant_id=$1 ORDER BY p.sort_order, p.name`, tenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -75,9 +75,9 @@ func (r *ProductRepository) GetByID(ctx context.Context, id int64) (*Product, er
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) (*Product, error) {
 		p := &Product{}
 		err := tx.QueryRowContext(ctx, `SELECT p.id, p.code, p.name, p.description, p.base_price, p.unit, p.image_url, p.category_id, p.has_variants, p.tax_rate, p.sort_order,
-			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id), 0)::int AS stock,
+			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id AND s.tenant_id = p.tenant_id), 0)::int AS stock,
 			p.barcode, p.purchase_price, p.min_stock, p.is_service, p.created_at, p.updated_at
-			FROM products p WHERE p.id=$1`, id).Scan(
+			FROM products p WHERE p.id=$1 AND p.tenant_id=$2`, id, tenantID).Scan(
 			&p.ID, &p.Code, &p.Name, &p.Description, &p.BasePrice, &p.Unit, &p.ImageURL, &p.CategoryID, &p.HasVariants, &p.TaxRate, &p.SortOrder, &p.Stock, &p.Barcode, &p.PurchasePrice, &p.MinStock, &p.IsService, &p.CreatedAt, &p.UpdatedAt)
 		if err != nil {
 			return nil, err
@@ -90,9 +90,9 @@ func (r *ProductRepository) Search(ctx context.Context, q string) ([]Product, er
 	like := "%" + q + "%"
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) ([]Product, error) {
 		rows, err := tx.QueryContext(ctx, `SELECT p.id, p.code, p.name, p.description, p.base_price, p.unit, p.image_url, p.category_id, p.has_variants, p.tax_rate, p.sort_order,
-			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id), 0)::int AS stock,
+			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id AND s.tenant_id = p.tenant_id), 0)::int AS stock,
 			p.barcode, p.purchase_price, p.min_stock, p.is_service, p.created_at, p.updated_at
-			FROM products p WHERE p.name ILIKE $1 OR p.code ILIKE $1 ORDER BY p.sort_order, p.name`, like)
+			FROM products p WHERE p.tenant_id=$1 AND (p.name ILIKE $2 OR p.code ILIKE $2) ORDER BY p.sort_order, p.name`, tenantID, like)
 		if err != nil {
 			return nil, err
 		}
@@ -113,9 +113,9 @@ func (r *ProductRepository) Barcode(ctx context.Context, code string) (*Product,
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) (*Product, error) {
 		p := &Product{}
 		err := tx.QueryRowContext(ctx, `SELECT p.id, p.code, p.name, p.description, p.base_price, p.unit, p.image_url, p.category_id, p.has_variants, p.tax_rate, p.sort_order,
-			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id), 0)::int AS stock,
+			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id AND s.tenant_id = p.tenant_id), 0)::int AS stock,
 			p.barcode, p.purchase_price, p.min_stock, p.is_service, p.created_at, p.updated_at
-			FROM products p WHERE p.code=$1`, code).Scan(
+			FROM products p WHERE p.code=$1 AND p.tenant_id=$2`, code, tenantID).Scan(
 			&p.ID, &p.Code, &p.Name, &p.Description, &p.BasePrice, &p.Unit, &p.ImageURL, &p.CategoryID, &p.HasVariants, &p.TaxRate, &p.SortOrder, &p.Stock, &p.Barcode, &p.PurchasePrice, &p.MinStock, &p.IsService, &p.CreatedAt, &p.UpdatedAt)
 		if err != nil {
 			return nil, err
@@ -127,9 +127,9 @@ func (r *ProductRepository) Barcode(ctx context.Context, code string) (*Product,
 func (r *ProductRepository) ListByCategory(ctx context.Context, categoryID int64) ([]Product, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) ([]Product, error) {
 		rows, err := tx.QueryContext(ctx, `SELECT p.id, p.code, p.name, p.description, p.base_price, p.unit, p.image_url, p.category_id, p.has_variants, p.tax_rate, p.sort_order,
-			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id), 0)::int AS stock,
+			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id AND s.tenant_id = p.tenant_id), 0)::int AS stock,
 			p.barcode, p.purchase_price, p.min_stock, p.is_service, p.created_at, p.updated_at
-			FROM products p WHERE p.category_id=$1 ORDER BY p.sort_order, p.name`, categoryID)
+			FROM products p WHERE p.category_id=$1 AND p.tenant_id=$2 ORDER BY p.sort_order, p.name`, categoryID, tenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -169,8 +169,8 @@ func (r *ProductRepository) Update(ctx context.Context, id int64, code, name, de
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) (*Product, error) {
 		p := &Product{}
 		err := tx.QueryRowContext(ctx,
-			"UPDATE products SET code=$1, name=$2, description=$3, base_price=$4, unit=$5, image_url=$6, category_id=$7, has_variants=$8, tax_rate=$9, sort_order=$10, stock=$11, barcode=$12, purchase_price=$13, min_stock=$14, is_service=$15, updated_at=NOW() WHERE id=$16 RETURNING "+productCols,
-			code, name, description, basePrice, unit, imageURL, categoryID, hasVariants, taxRate, sortOrder, stock, barcode, purchasePrice, minStock, isService, id).Scan(
+			"UPDATE products SET code=$1, name=$2, description=$3, base_price=$4, unit=$5, image_url=$6, category_id=$7, has_variants=$8, tax_rate=$9, sort_order=$10, stock=$11, barcode=$12, purchase_price=$13, min_stock=$14, is_service=$15, updated_at=NOW() WHERE id=$16 AND tenant_id=$17 RETURNING "+productCols,
+			code, name, description, basePrice, unit, imageURL, categoryID, hasVariants, taxRate, sortOrder, stock, barcode, purchasePrice, minStock, isService, id, tenantID).Scan(
 			&p.ID, &p.Code, &p.Name, &p.Description, &p.BasePrice, &p.Unit, &p.ImageURL, &p.CategoryID, &p.HasVariants, &p.TaxRate, &p.SortOrder, &p.Stock, &p.Barcode, &p.PurchasePrice, &p.MinStock, &p.IsService, &p.CreatedAt, &p.UpdatedAt)
 		if err != nil {
 			return nil, err
@@ -181,7 +181,7 @@ func (r *ProductRepository) Update(ctx context.Context, id int64, code, name, de
 
 func (r *ProductRepository) Delete(ctx context.Context, id int64) error {
 	return withTenantTx(ctx, r.db, func(tx *sql.Tx, tenantID int64) error {
-		_, err := tx.ExecContext(ctx, "DELETE FROM products WHERE id=$1", id)
+		_, err := tx.ExecContext(ctx, "DELETE FROM products WHERE id=$1 AND tenant_id=$2", id, tenantID)
 		return err
 	})
 }
@@ -216,7 +216,7 @@ func (r *ProductRepository) SetAvailability(ctx context.Context, productID int64
 func (r *ProductRepository) GetAvailability(ctx context.Context, productID int64, date string) (*ProductAvailability, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) (*ProductAvailability, error) {
 		a := &ProductAvailability{}
-		err := tx.QueryRowContext(ctx, "SELECT id, product_id, date, is_available, created_at FROM product_availability WHERE product_id=$1 AND date=$2", productID, date).Scan(&a.ID, &a.ProductID, &a.Date, &a.IsAvailable, &a.CreatedAt)
+		err := tx.QueryRowContext(ctx, "SELECT id, product_id, date, is_available, created_at FROM product_availability WHERE product_id=$1 AND date=$2 AND tenant_id=$3", productID, date, tenantID).Scan(&a.ID, &a.ProductID, &a.Date, &a.IsAvailable, &a.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -226,7 +226,7 @@ func (r *ProductRepository) GetAvailability(ctx context.Context, productID int64
 
 func (r *ProductRepository) ListAvailability(ctx context.Context, date string) ([]ProductAvailability, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) ([]ProductAvailability, error) {
-		rows, err := tx.QueryContext(ctx, "SELECT id, product_id, date, is_available, created_at FROM product_availability WHERE date=$1", date)
+		rows, err := tx.QueryContext(ctx, "SELECT id, product_id, date, is_available, created_at FROM product_availability WHERE date=$1 AND tenant_id=$2", date, tenantID)
 		if err != nil {
 			return nil, err
 		}
@@ -246,9 +246,9 @@ func (r *ProductRepository) ListAvailability(ctx context.Context, date string) (
 func (r *ProductRepository) ListLowStock(ctx context.Context, threshold int) ([]Product, error) {
 	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) ([]Product, error) {
 		rows, err := tx.QueryContext(ctx, `SELECT p.id, p.code, p.name, p.description, p.base_price, p.unit, p.image_url, p.category_id, p.has_variants, p.tax_rate, p.sort_order,
-			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id), 0)::int AS stock,
+			COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id AND s.tenant_id = p.tenant_id), 0)::int AS stock,
 			p.barcode, p.purchase_price, p.min_stock, p.is_service, p.created_at, p.updated_at
-			FROM products p WHERE p.tenant_id=$1 AND COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id), 0) <= $2`, tenantID, threshold)
+			FROM products p WHERE p.tenant_id=$1 AND COALESCE((SELECT SUM(s.quantity) FROM stock s WHERE s.product_id = p.id AND s.tenant_id = p.tenant_id), 0) <= $2`, tenantID, threshold)
 		if err != nil {
 			return nil, err
 		}
