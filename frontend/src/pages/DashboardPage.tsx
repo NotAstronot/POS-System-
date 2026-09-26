@@ -3,7 +3,7 @@ import {
   TrendingUp, DollarSign, ShoppingBag, Clock,
   ArrowUp, ArrowDown, Package, AlertTriangle
 } from 'lucide-react';
-import { productService, revenueService, type Product, type RevenueSummary, type RecentOrder } from '../services/api';
+import { productService, revenueService, reportService, shiftService, type Product, type RevenueSummary, type RecentOrder, type PaymentMethodStat, type ShiftHistory } from '../services/api';
 
 const methodLabel: Record<string, string> = {
   cash: 'Tunai',
@@ -18,6 +18,8 @@ export function DashboardPage() {
   const [lowStockItems, setLowStockItems] = useState<Product[]>([]);
   const [revenue, setRevenue] = useState<RevenueSummary | null>(null);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+  const [payMethods, setPayMethods] = useState<PaymentMethodStat[] | null>(null);
+  const [shiftHistory, setShiftHistory] = useState<ShiftHistory[]>([]);
 
   const load = () => {
     productService.lowStock(5)
@@ -28,6 +30,15 @@ export function DashboardPage() {
         setRevenue(res.data.data);
         setRecentOrders(res.data.data.recent_orders || []);
       })
+      .catch(() => {});
+    // Rekap akurat per metode pembayaran (periode bulan berjalan).
+    // Bila user tidak punya izin report_view, fallback ke agregasi lokal
+    // dari pesanan terakhir (perilaku lama).
+    reportService.paymentMethods({ period: 'this_month' })
+      .then((res) => setPayMethods(res.data.data || []))
+      .catch(() => setPayMethods(null));
+    shiftService.history(10)
+      .then((res) => setShiftHistory(res.data.data || []))
       .catch(() => {});
   };
 
@@ -170,29 +181,57 @@ export function DashboardPage() {
           )}
 
           <div className="mt-6">
-            <h4 className="text-sm font-medium text-neutral-600 mb-3">Penjualan per Metode</h4>
+            <h4 className="text-sm font-medium text-neutral-600 mb-1">Penjualan per Metode</h4>
+            <p className="text-[11px] text-neutral-400 mb-3">
+              {payMethods ? 'Bulan berjalan (seluruh transaksi)' : 'Estimasi dari 10 pesanan terakhir'}
+            </p>
             <div className="space-y-2">
               {(() => {
-                const byMethod = new Map<string, number>();
-                recentOrders.forEach((o) => {
-                  const m = methodLabel[o.payment_method] || o.payment_method;
-                  byMethod.set(m, (byMethod.get(m) || 0) + o.total);
-                });
-                const total = Array.from(byMethod.values()).reduce((s, v) => s + v, 0);
-                const list = Array.from(byMethod.entries());
-                if (list.length === 0) {
+                const rows: { label: string; amount: number; tx: number; pct: number }[] = payMethods
+                  ? payMethods.map((m) => ({
+                      label: methodLabel[m.method] || m.method,
+                      amount: m.total,
+                      tx: m.transactions,
+                      pct: m.pct,
+                    }))
+                  : (() => {
+                      const byMethod = new Map<string, { amount: number; tx: number }>();
+                      recentOrders.forEach((o) => {
+                        const m = methodLabel[o.payment_method] || o.payment_method;
+                        const cur = byMethod.get(m) || { amount: 0, tx: 0 };
+                        byMethod.set(m, { amount: cur.amount + o.total, tx: cur.tx + 1 });
+                      });
+                      const total = Array.from(byMethod.values()).reduce((s, v) => s + v.amount, 0);
+                      return Array.from(byMethod.entries()).map(([label, v]) => ({
+                        label,
+                        amount: v.amount,
+                        tx: v.tx,
+                        pct: total > 0 ? (v.amount / total) * 100 : 0,
+                      }));
+                    })();
+                if (rows.length === 0) {
                   return <p className="text-neutral-500 text-xs">Belum ada data penjualan</p>;
                 }
-                return list.map(([method, amount]) => (
-                  <div key={method}>
+                const favorite = rows[0].label;
+                return rows.map((row) => (
+                  <div key={row.label}>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className="text-neutral-500">{method}</span>
-                      <span className="text-neutral-900">Rp {Math.round(amount).toLocaleString()}</span>
+                      <span className="text-neutral-500">
+                        {row.label}
+                        {row.label === favorite && (
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded bg-warning/15 text-warning-dark font-semibold text-[10px]">
+                            ★ Favorit
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-neutral-900">
+                        Rp {Math.round(row.amount).toLocaleString()} · {row.tx} trx
+                      </span>
                     </div>
                     <div className="w-full h-1.5 bg-neutral-200 rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full bg-brand"
-                        style={{ width: `${total > 0 ? (amount / total) * 100 : 0}%` }}
+                        style={{ width: `${row.pct}%` }}
                       />
                     </div>
                   </div>
@@ -201,6 +240,60 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Rekap Shift Kasir */}
+      <div className="pos-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-neutral-900">Rekap Shift Kasir</h3>
+          <Clock className="w-4 h-4 text-neutral-500" />
+        </div>
+        {shiftHistory.length === 0 ? (
+          <p className="text-neutral-500 text-sm py-4 text-center">Belum ada data shift</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-[11px] uppercase tracking-wide text-neutral-500">
+                  <th className="px-3 py-2.5">Shift</th>
+                  <th className="px-3 py-2.5">Kasir</th>
+                  <th className="px-3 py-2.5">Dibuka</th>
+                  <th className="px-3 py-2.5">Ditutup</th>
+                  <th className="px-3 py-2.5 text-right">Transaksi</th>
+                  <th className="px-3 py-2.5 text-right">Omzet</th>
+                  <th className="px-3 py-2.5 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {shiftHistory.map((s) => (
+                  <tr key={s.id}>
+                    <td className="px-3 py-2.5 font-medium text-neutral-900">#{s.id}</td>
+                    <td className="px-3 py-2.5 text-neutral-700">{s.user_name || '-'}</td>
+                    <td className="px-3 py-2.5 text-neutral-500 text-xs">
+                      {new Date(s.opened_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="px-3 py-2.5 text-neutral-500 text-xs">
+                      {s.closed_at
+                        ? new Date(s.closed_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                        : '-'}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-neutral-900">{s.transactions}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-neutral-900">
+                      Rp {Math.round(s.total_sales).toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      {s.status === 'open' ? (
+                        <span className="pos-badge-success text-[10px]">Buka</span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-neutral-200 text-neutral-600 text-[10px]">Tutup</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

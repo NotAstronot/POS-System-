@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Store, Eye, EyeOff } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { authService } from '../services/api';
@@ -115,6 +115,13 @@ export function LoginPage() {
           >
             {loading ? 'Memproses...' : 'Masuk'}
           </button>
+
+          <p className="text-center text-sm text-neutral-500 mt-4">
+            Belum punya akun bisnis?{' '}
+            <Link to="/register" className="text-brand font-medium hover:underline">
+              Daftarkan merchant baru
+            </Link>
+          </p>
         </div>
 
         <p className="text-center text-neutral-500 text-xs mt-6">

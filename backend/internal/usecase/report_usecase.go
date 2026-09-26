@@ -34,3 +34,10 @@ func (u *ReportUsecase) Summary(ctx context.Context, period string, outletID *in
 	}
 	return u.repo.Summary(ctx, period, outletID)
 }
+
+func (u *ReportUsecase) PaymentMethods(ctx context.Context, period string, outletID *int64) ([]postgres.PaymentMethodStat, error) {
+	if !reportPeriods[period] {
+		period = "this_month"
+	}
+	return u.repo.PaymentMethods(ctx, period, outletID)
+}

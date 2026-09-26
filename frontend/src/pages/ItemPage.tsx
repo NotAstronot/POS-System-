@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { Upload, Download, FileSpreadsheet, X } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { inventoryService, Item, ItemVariant, categoryService } from '../services/api';
 
 interface CategoryOpt {
@@ -41,6 +43,141 @@ export default function ItemPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [details, setDetails] = useState<Record<number, Item>>({});
   const [error, setError] = useState('');
+
+  // ---- Bulk Upload Excel/CSV ----
+  interface BulkRow {
+    data: Record<string, any>;
+    rowNum: number;
+    error?: string;
+  }
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
+  const [bulkFileName, setBulkFileName] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ done: 0, total: 0 });
+  const [importResult, setImportResult] = useState<{ ok: number; fail: BulkRow[] } | null>(null);
+
+  const normKey = (h: any) => String(h ?? '').toLowerCase().trim().replace(/[\s_]+/g, '');
+  const colMap: Record<string, string> = {
+    code: 'code', kode: 'code',
+    name: 'name', nama: 'name', namabarang: 'name',
+    barcode: 'barcode',
+    description: 'description', deskripsi: 'description',
+    category: 'category', kategori: 'category',
+    unit: 'unit', satuan: 'unit',
+    purchaseprice: 'purchase_price', hpp: 'purchase_price', hargabeli: 'purchase_price',
+    baseprice: 'base_price', hargajual: 'base_price', harga: 'base_price',
+    minstock: 'min_stock', stokmin: 'min_stock', stokminimal: 'min_stock',
+    initialstock: 'initial_stock', stokawal: 'initial_stock', stok: 'initial_stock',
+    taxrate: 'tax_rate', pajak: 'tax_rate',
+    isservice: 'is_service', jasa: 'is_service',
+  };
+  const numVal = (v: any) => {
+    const n = parseFloat(String(v ?? '').replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  };
+  const boolVal = (v: any) => /^(true|1|ya|y|jasa)$/i.test(String(v ?? '').trim());
+
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.json_to_sheet([
+      { code: 'BRG-001', name: 'Kopi Susu 250ml', barcode: '8991234567890', description: 'Kopi susu gula aren', category: 'Minuman', unit: 'pcs', purchase_price: 8000, base_price: 15000, min_stock: 10, initial_stock: 100, tax_rate: 11, is_service: 'FALSE' },
+      { code: 'JSA-001', name: 'Cuci Motor', barcode: '', description: 'Jasa cuci motor', category: 'Jasa', unit: 'pcs', purchase_price: 0, base_price: 25000, min_stock: 0, initial_stock: 0, tax_rate: 0, is_service: 'TRUE' },
+    ]);
+    ws['!cols'] = [{ wch: 12 }, { wch: 24 }, { wch: 18 }, { wch: 24 }, { wch: 14 }, { wch: 8 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 13 }, { wch: 10 }, { wch: 11 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Produk');
+    XLSX.writeFile(wb, 'template-bulk-produk.xlsx');
+  };
+
+  const handleBulkFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBulkFileName(file.name);
+    setImportResult(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const wb = XLSX.read(reader.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const aoa: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        if (aoa.length < 2) { setBulkRows([]); setError('File kosong (butuh baris header + minimal 1 data)'); return; }
+        const headers = aoa[0].map(normKey).map((h) => colMap[h] || '');
+        const rows: BulkRow[] = [];
+        for (let i = 1; i < aoa.length; i++) {
+          const data: Record<string, any> = {};
+          let empty = true;
+          headers.forEach((key, j) => {
+            if (!key) return;
+            const v = aoa[i][j];
+            data[key] = typeof v === 'string' ? v.trim() : v;
+            if (data[key] !== '' && data[key] !== undefined) empty = false;
+          });
+          if (empty) continue;
+          const row: BulkRow = { data, rowNum: i + 1 };
+          if (!data.name) row.error = 'Nama produk wajib diisi';
+          rows.push(row);
+        }
+        setBulkRows(rows);
+      } catch {
+        setBulkRows([]);
+        setError('Gagal membaca file. Gunakan format .xlsx atau .csv');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleBulkImport = async () => {
+    const valid = bulkRows.filter((r) => !r.error);
+    if (valid.length === 0) { setError('Tidak ada baris valid untuk diimport'); return; }
+    setImporting(true);
+    setImportProgress({ done: 0, total: valid.length });
+    const catCache = new Map<string, number | null>();
+    categories.forEach((c) => catCache.set(c.name.toLowerCase(), Number(c.id)));
+    let ok = 0;
+    const fail: BulkRow[] = [];
+    for (let i = 0; i < valid.length; i++) {
+      const row = valid[i];
+      try {
+        const d = row.data;
+        let categoryId: number | null = null;
+        const catName = String(d.category ?? '').trim();
+        if (catName) {
+          const key = catName.toLowerCase();
+          if (catCache.has(key)) {
+            categoryId = catCache.get(key) ?? null;
+          } else {
+            const res = await categoryService.create(catName);
+            categoryId = Number((res.data.data as any).id);
+            catCache.set(key, categoryId);
+          }
+        }
+        await inventoryService.createItem({
+          code: String(d.code ?? ''),
+          name: String(d.name ?? ''),
+          barcode: String(d.barcode ?? ''),
+          description: String(d.description ?? ''),
+          category_id: categoryId,
+          purchase_price: numVal(d.purchase_price),
+          base_price: numVal(d.base_price),
+          unit: String(d.unit ?? 'pcs') || 'pcs',
+          min_stock: Math.round(numVal(d.min_stock)),
+          is_service: boolVal(d.is_service),
+          has_variants: false,
+          tax_rate: numVal(d.tax_rate),
+          initial_stock: Math.round(numVal(d.initial_stock)),
+          variants: [],
+        });
+        ok++;
+      } catch (err: any) {
+        fail.push({ ...row, error: err.response?.data?.error || err.message || 'Gagal import' });
+      }
+      setImportProgress({ done: i + 1, total: valid.length });
+    }
+    setImporting(false);
+    setImportResult({ ok, fail });
+    load();
+  };
 
   const load = async () => {
     setError('');
@@ -168,7 +305,15 @@ export default function ItemPage() {
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Barang & Jasa</h1>
-        <button onClick={openAdd} className="bg-blue-600 text-white px-4 py-2 rounded">+ Barang</button>
+        <div className="flex gap-2">
+          <button onClick={downloadTemplate} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded flex items-center gap-2 hover:bg-gray-50">
+            <Download className="w-4 h-4" /> Template
+          </button>
+          <button onClick={() => { setShowBulk(true); setBulkRows([]); setImportResult(null); setBulkFileName(''); }} className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded flex items-center gap-2 hover:bg-gray-50">
+            <FileSpreadsheet className="w-4 h-4" /> Bulk Upload
+          </button>
+          <button onClick={openAdd} className="bg-blue-600 text-white px-4 py-2 rounded">+ Barang</button>
+        </div>
       </div>
 
       {error && <div className="mb-4 p-4 text-red-500 bg-red-50 border border-red-200 rounded">{error}</div>}
@@ -357,6 +502,102 @@ export default function ItemPage() {
               {data.length === 0 && <tr><td colSpan={9} className="p-4 text-center text-gray-400">Belum ada barang</td></tr>}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {showBulk && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="font-bold flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-green-600" /> Bulk Upload Produk (Excel/CSV)
+              </h2>
+              <button onClick={() => setShowBulk(false)} disabled={importing} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="text-sm text-gray-600 bg-gray-50 border rounded-lg p-3">
+                <p className="font-medium mb-1">Langkah:</p>
+                <ol className="list-decimal ml-5 space-y-0.5">
+                  <li>Unduh <button onClick={downloadTemplate} className="text-blue-600 hover:underline">template Excel</button> bila belum punya.</li>
+                  <li>Isi data (kolom <b>name</b> wajib; harga & stok berupa angka polos).</li>
+                  <li>Pilih file .xlsx/.csv, periksa preview, lalu klik Import.</li>
+                </ol>
+              </div>
+
+              <label className="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-xl py-8 cursor-pointer hover:border-blue-500 transition-colors">
+                <Upload className="w-5 h-5 text-gray-500" />
+                <span className="text-sm text-gray-600">{bulkFileName || 'Klik untuk pilih file Excel/CSV'}</span>
+                <input type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkFile} className="hidden" disabled={importing} />
+              </label>
+
+              {bulkRows.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium mb-2">
+                    Preview: {bulkRows.length} baris
+                    <span className="text-green-700"> ({bulkRows.filter((r) => !r.error).length} valid</span>
+                    {bulkRows.some((r) => r.error) && <span className="text-red-600">, {bulkRows.filter((r) => r.error).length} bermasalah</span>})
+                  </p>
+                  <div className="overflow-x-auto border rounded-lg max-h-64 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-100 sticky top-0">
+                        <tr>
+                          <th className="p-2 text-left">Baris</th>
+                          <th className="p-2 text-left">Nama</th>
+                          <th className="p-2 text-right">Harga Jual</th>
+                          <th className="p-2 text-right">HPP</th>
+                          <th className="p-2 text-right">Stok Awal</th>
+                          <th className="p-2 text-left">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkRows.slice(0, 50).map((r, i) => (
+                          <tr key={i} className="border-t">
+                            <td className="p-2">{r.rowNum}</td>
+                            <td className="p-2">{String(r.data.name || '-')}</td>
+                            <td className="p-2 text-right">{numVal(r.data.base_price).toLocaleString('id-ID')}</td>
+                            <td className="p-2 text-right">{numVal(r.data.purchase_price).toLocaleString('id-ID')}</td>
+                            <td className="p-2 text-right">{Math.round(numVal(r.data.initial_stock))}</td>
+                            <td className="p-2">{r.error ? <span className="text-red-600 text-xs">{r.error}</span> : <span className="text-green-600 text-xs">Siap</span>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {bulkRows.length > 50 && <p className="text-xs text-gray-400 p-2">... dan {bulkRows.length - 50} baris lainnya</p>}
+                  </div>
+                </div>
+              )}
+
+              {importing && (
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Mengimport...</span>
+                    <span>{importProgress.done}/{importProgress.total}</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-600 transition-all" style={{ width: `${importProgress.total > 0 ? (importProgress.done / importProgress.total) * 100 : 0}%` }} />
+                  </div>
+                </div>
+              )}
+
+              {importResult && (
+                <div className={`border rounded-lg p-3 text-sm ${importResult.fail.length === 0 ? 'bg-green-50 border-green-200 text-green-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+                  <p className="font-medium">Import selesai: {importResult.ok} berhasil{importResult.fail.length > 0 && `, ${importResult.fail.length} gagal`}.</p>
+                  {importResult.fail.slice(0, 10).map((f, i) => (
+                    <p key={i} className="text-xs mt-1">Baris {f.rowNum} ({String(f.data.name || '-')}) : {f.error}</p>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setShowBulk(false)} disabled={importing} className="bg-gray-200 text-gray-700 px-4 py-2 rounded disabled:opacity-50">Tutup</button>
+                <button onClick={handleBulkImport} disabled={importing || bulkRows.filter((r) => !r.error).length === 0} className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50">
+                  {importing ? 'Mengimport...' : `Import ${bulkRows.filter((r) => !r.error).length} Produk`}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

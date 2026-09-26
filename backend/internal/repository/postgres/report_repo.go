@@ -573,3 +573,67 @@ func (r *ReportRepository) loadTopItemsByCategoryTx(ctx context.Context, tx *sql
 	}
 	return rows.Err()
 }
+
+// PaymentMethodStat adalah agregasi penjualan per metode pembayaran
+// (mendukung split payment karena dihitung dari tabel transactions).
+type PaymentMethodStat struct {
+	Method       string  `json:"method"`
+	Transactions int     `json:"transactions"`
+	Total        float64 `json:"total"`
+	Pct          float64 `json:"pct"`
+}
+
+// PaymentMethods mengembalikan rekap penjualan per metode pembayaran
+// pada rentang periode yang sama dengan Summary (plus filter outlet opsional).
+func (r *ReportRepository) PaymentMethods(ctx context.Context, period string, outletID *int64) ([]PaymentMethodStat, error) {
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		loc = time.Local
+	}
+	now := time.Now().In(loc)
+
+	since, until, _, _, _, ok := periodRange(period, now)
+	if !ok {
+		return nil, fmt.Errorf("periode tidak valid: %s", period)
+	}
+
+	return withTenantTx1(ctx, r.db, func(tx *sql.Tx, tenantID int64) ([]PaymentMethodStat, error) {
+		where := "o.status='completed' AND t.created_at >= $1 AND t.created_at < $2 AND t.tenant_id=$3"
+		args := []any{since, until, tenantID}
+		if outletID != nil {
+			args = append(args, outletUUID(*outletID))
+			where += fmt.Sprintf(" AND o.outlet_id = $%d", len(args))
+		}
+
+		rows, err := tx.QueryContext(ctx, `
+			SELECT COALESCE(NULLIF(t.payment_method,''),'cash') AS method, COUNT(*), COALESCE(SUM(t.amount),0)
+			FROM transactions t
+			JOIN orders o ON o.id = t.order_id AND o.tenant_id = t.tenant_id
+			WHERE `+where+`
+			GROUP BY method ORDER BY SUM(t.amount) DESC`, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		list := []PaymentMethodStat{}
+		var grandTotal float64
+		for rows.Next() {
+			var s PaymentMethodStat
+			if err := rows.Scan(&s.Method, &s.Transactions, &s.Total); err != nil {
+				return nil, err
+			}
+			grandTotal += s.Total
+			list = append(list, s)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		if grandTotal > 0 {
+			for i := range list {
+				list[i].Pct = list[i].Total / grandTotal * 100
+			}
+		}
+		return list, nil
+	})
+}

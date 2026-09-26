@@ -19,3 +19,7 @@ func NewShiftUsecase(shiftRepo *postgres.ShiftRepository, orderRepo *postgres.Or
 func (u *ShiftUsecase) GetActiveShift(ctx context.Context) (*postgres.Shift, error) {
 	return u.shiftRepo.GetActiveShift(ctx)
 }
+
+func (u *ShiftUsecase) History(ctx context.Context, limit int) ([]postgres.ShiftHistory, error) {
+	return u.shiftRepo.History(ctx, limit)
+}

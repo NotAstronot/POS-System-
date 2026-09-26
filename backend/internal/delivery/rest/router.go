@@ -142,6 +142,7 @@ func registerPOSRoutes(api *gin.RouterGroup, h Handlers, authMw, posAccessMw, me
 	{
 		reports.GET("/outlets", h.Report.Outlets)
 		reports.GET("/summary", h.Report.Summary)
+		reports.GET("/payment-methods", h.Report.PaymentMethods)
 	}
 }
 
@@ -158,6 +159,7 @@ func registerShiftRoutes(api *gin.RouterGroup, h Handlers, authMw gin.HandlerFun
 	shift.Use(authMw)
 	{
 		shift.GET("/active", h.Shift.GetActiveShift)
+		shift.GET("/history", h.Shift.History)
 		shift.POST("/open", h.Order.OpenShift)
 		shift.POST("/:id/close", h.Order.CloseShift)
 	}

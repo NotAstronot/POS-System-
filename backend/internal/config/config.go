@@ -66,6 +66,9 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("JWT_SECRET"); v != "" {
 		cfg.JWT.SecretKey = v
 	}
+	if v := os.Getenv("SERVER_PORT"); v != "" {
+		cfg.Server.Port = v
+	}
 	if v := os.Getenv("ADMIN_USERNAME"); v != "" {
 		cfg.Server.AdminUsername = v
 	}

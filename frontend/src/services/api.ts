@@ -238,7 +238,29 @@ export const reportService = {
   outlets: () => api.get<{ success: boolean; data: Outlet[] }>('/reports/outlets'),
   summary: (params: { period: string; outlet_id?: number }) =>
     api.get<{ success: boolean; data: ReportSummaryData }>('/reports/summary', { params }),
+  paymentMethods: (params: { period: string; outlet_id?: number }) =>
+    api.get<{ success: boolean; data: PaymentMethodStat[] }>('/reports/payment-methods', { params }),
 };
+
+export interface PaymentMethodStat {
+  method: string;
+  transactions: number;
+  total: number;
+  pct: number;
+}
+
+export interface ShiftHistory {
+  id: number;
+  user_id: number;
+  user_name: string;
+  opened_at: string;
+  closed_at: string | null;
+  opening_balance: number;
+  closing_balance: number | null;
+  status: string;
+  transactions: number;
+  total_sales: number;
+}
 
 // Shift APIs
 export const shiftService = {
@@ -248,6 +270,8 @@ export const shiftService = {
     api.post(`/shifts/${id}/close`, data),
   active: (outletId: string, userId: string) =>
     api.get('/shifts/active', { params: { outlet_id: outletId, user_id: userId } }),
+  history: (limit: number = 10) =>
+    api.get<{ success: boolean; data: ShiftHistory[] }>('/shifts/history', { params: { limit } }),
 };
 
 // Stock APIs
@@ -268,6 +292,8 @@ export const paymentService = {
 export const authService = {
   login: (data: { username: string; password: string; tenant_id: string; outlet_id: string }) =>
     api.post('/auth/login', data),
+  registerMerchant: (data: { merchant_name: string; slug?: string; username: string; owner_name?: string; password: string }) =>
+    api.post('/auth/register-merchant', data),
 };
 
 // Admin APIs

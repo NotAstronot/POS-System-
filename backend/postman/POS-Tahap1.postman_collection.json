@@ -1,0 +1,133 @@
+{
+	"info": {
+		"_postman_id": "pos-tahap1-core",
+		"name": "POS Tahap 1 - Core API",
+		"description": "6 endpoint wajib Tahap 1. Urutan pakai: 1 Register (sekali saja) -> 2 Login (ambil token otomatis) -> 3-6 butuh Bearer token.\nBase URL default http://localhost:8082 (config.yaml). Kalau jalan via docker-compose, ganti baseUrl jadi http://localhost:8080.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{ "key": "baseUrl", "value": "http://localhost:8082" },
+		{ "key": "token", "value": "" },
+		{ "key": "productId", "value": "1" }
+	],
+	"item": [
+		{
+			"name": "1. Register Merchant",
+			"request": {
+				"description": "Buat tenant baru + user owner. Hanya dipakai SEKALI per merchant. Response langsung berisi token.",
+				"method": "POST",
+				"url": "{{baseUrl}}/api/v1/auth/register-merchant",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"merchant_name\": \"Toko Maju Jaya\",\n  \"slug\": \"toko-maju-jaya\",\n  \"username\": \"owner\",\n  \"owner_name\": \"Budi Owner\",\n  \"password\": \"secret123\"\n}"
+				}
+			},
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var json = pm.response.json();",
+							"if (json.data && json.data.token) {",
+							"  pm.collectionVariables.set('token', json.data.token);",
+							"  console.log('token tersimpan');",
+							"}"
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "2. Login",
+			"request": {
+				"description": "Login pakai username+password (bukan email). Response berisi token JWT 24 jam + claims user_id/tenant_id/role/outlet_id.",
+				"method": "POST",
+				"url": "{{baseUrl}}/api/v1/auth/login",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"username\": \"owner\",\n  \"password\": \"secret123\"\n}"
+				}
+			},
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var json = pm.response.json();",
+							"if (json.data && json.data.token) {",
+							"  pm.collectionVariables.set('token', json.data.token);",
+							"}",
+							"pm.test('login 200', function () { pm.response.to.have.status(200); });"
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "3. List Products",
+			"request": {
+				"description": "Katalog barang milik tenant dari JWT. Butuh header Authorization: Bearer {{token}}.",
+				"method": "GET",
+				"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+				"url": "{{baseUrl}}/api/v1/products"
+			}
+		},
+		{
+			"name": "4. Create Product",
+			"request": {
+				"description": "Tambah produk. Hanya role admin/owner atau permission menu_manage. Field name wajib.",
+				"method": "POST",
+				"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+				"url": "{{baseUrl}}/api/v1/products",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"code\": \"PRD-001\",\n  \"name\": \"Kopi Susu 250ml\",\n  \"description\": \"Kopi susu gula aren\",\n  \"base_price\": 15000,\n  \"purchase_price\": 8000,\n  \"unit\": \"pcs\",\n  \"stock\": 100,\n  \"min_stock\": 10,\n  \"barcode\": \"8991234567890\",\n  \"category_id\": null,\n  \"has_variants\": false,\n  \"tax_rate\": 0,\n  \"sort_order\": 1,\n  \"is_service\": false\n}"
+				}
+			},
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var json = pm.response.json();",
+							"if (json.data && json.data.id) {",
+							"  pm.collectionVariables.set('productId', json.data.id);",
+							"}"
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "5. Update Product",
+			"request": {
+				"description": "Update stok/harga. Pakai {{productId}} yang otomatis terisi setelah Create, atau isi manual.",
+				"method": "PUT",
+				"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+				"url": "{{baseUrl}}/api/v1/products/{{productId}}",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"code\": \"PRD-001\",\n  \"name\": \"Kopi Susu 250ml\",\n  \"description\": \"Kopi susu gula aren\",\n  \"base_price\": 18000,\n  \"purchase_price\": 8000,\n  \"unit\": \"pcs\",\n  \"stock\": 95,\n  \"min_stock\": 10,\n  \"barcode\": \"8991234567890\",\n  \"category_id\": null,\n  \"has_variants\": false,\n  \"tax_rate\": 0,\n  \"sort_order\": 1,\n  \"is_service\": false\n}"
+				}
+			}
+		},
+		{
+			"name": "6. Sync Transactions (offline batch)",
+			"request": {
+				"description": "Endpoint krusial offline-first: terima batch transaksi dari kasir. Idempotent per client_order_id — kirim ulang aman, tidak duplikat. Key 'transactions' dan 'orders' sama-sama didukung.",
+				"method": "POST",
+				"auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+				"url": "{{baseUrl}}/api/v1/transactions/sync",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"transactions\": [\n    {\n      \"client_order_id\": \"kasir01-20260926-001\",\n      \"order_type\": \"dine_in\",\n      \"table_number\": \"A1\",\n      \"customer_name\": \"Andi\",\n      \"items\": [\n        { \"product_id\": 1, \"quantity\": 2, \"note\": \"es sedikit\" }\n      ],\n      \"payments\": [\n        { \"method\": \"cash\", \"amount\": 36000 }\n      ]\n    },\n    {\n      \"client_order_id\": \"kasir01-20260926-002\",\n      \"order_type\": \"takeaway\",\n      \"items\": [\n        { \"product_id\": 1, \"quantity\": 1 }\n      ],\n      \"payments\": [\n        { \"method\": \"qris\", \"amount\": 18000, \"reference_no\": \"QRIS123\" }\n      ]\n    }\n  ]\n}"
+				}
+			}
+		}
+	]
+}
